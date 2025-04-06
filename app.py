@@ -18,7 +18,6 @@ class ASRInterface:
         self.available_models = {
             "loko99/whisper_tiny_kannada": "Whisper Tiny KN",
             "loko99/whisper_small_kannada": "Whisper Small KN",
-            "loko99/whisper_small_kannada_v2": "Whisper Small KN V2",
             "loko99/whisper_turbo_kannada": "Whisper Turbo KN",
             "openai/whisper-tiny": "Whisper Tiny",
             "openai/whisper-small": "Whisper Small",
