@@ -81,7 +81,7 @@ class ASRInterface:
         
         return {"error": "Maximum retries reached. Service is unavailable."}
     
-    def process_long_audio(self, audio_path: str, model_name: str, chunk_size_ms: int = 10000, overlap_ms: int = 1000) -> str:
+    def process_long_audio(self, audio_path: str, model_name: str, chunk_size_ms: int = 15000, overlap_ms: int = 1000) -> str:
         """Process longer audio files by splitting into chunks with overlap"""
         try:
             # Load audio file
