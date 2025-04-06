@@ -1,0 +1,6 @@
+Flask
+pydub
+python-dotenv
+Requests
+waitress
+Werkzeug

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <title>Kannada ASR Transcription Interface</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <!-- Favicon -->
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="alternate icon" href="{{ url_for('static', filename='favicon.svg') }}">
+    <!-- Add theme initialization script before other resources -->
+    <script src="{{ url_for('static', filename='init-theme.js') }}"></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <!-- Add theme toggle button -->
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode">
+        <img src="{{ url_for('static', filename='sun-moon.svg') }}" alt="Theme toggle icon" id="themeIcon" width="20" height="20">
+    </button>
+    
+    <div class="container">
+        <h1>Kannada ASR Transcription</h1>
+        <div class="card">
+            <form id="transcriptionForm" method="post" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="modelSelect">Select Model</label>
+                    <select id="modelSelect" name="model" required>
+                        {% for key, model in models.items() %}
+                        <option value="{{ key }}">{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <!-- Hidden input for language - always set to Kannada -->
+                <input type="hidden" name="language" value="kn">
+                
+                <!-- Audio source selection tabs -->
+                <div class="tab-container">
+                    <div class="tabs">
+                        <div class="tab-slider" id="tab-slider"></div>
+                        <button type="button" class="tab-btn active" data-tab="upload">Upload Audio</button>
+                        <button type="button" class="tab-btn" data-tab="record">Record Audio</button>
+                    </div>
+                    
+                    <!-- Upload tab content -->
+                    <div class="tab-content active" id="upload-tab">
+                        <div class="form-group">
+                            <label>Upload Audio</label>
+                            <div class="file-input" id="fileInputContainer">
+                                <div class="file-input-label">
+                                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                        <polyline points="17 8 12 3 7 8"></polyline>
+                                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                                    </svg>
+                                    Drag and drop audio file or click to browse
+                                    <span>Supports .mp3, .wav, .m4a, .flac</span>
+                                </div>
+                                <input type="file" id="audioFile" name="audio" accept=".mp3,.wav,.m4a,.flac">
+                            </div>
+                            <div class="file-name" id="fileName"></div>
+                            <!-- Simple audio player for uploaded audio with minimal styling -->
+                            <audio controls id="uploadedAudio" style="display: none; width: 100%; margin-top: 15px;"></audio>
+                        </div>
+                    </div>
+                    
+                    <!-- Record tab content -->
+                    <div class="tab-content" id="record-tab">
+                        <div class="form-group">
+                            <label>Record Audio</label>
+                            <div class="record-container">
+                                <div id="recordingStatus">Click button to start recording</div>
+                                <div id="recordingTime" class="recording-time">00:00</div>
+                                <div class="record-controls">
+                                    <button type="button" id="recordToggleButton" class="record-btn">
+                                        <span class="recording-indicator"></span>
+                                        Start Recording
+                                    </button>
+                                </div>
+                                <!-- Simple audio player for recorded audio with minimal styling -->
+                                <audio controls id="recordedAudio" style="display: none; width: 100%; margin-top: 15px;"></audio>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Hidden input to store recorded audio blob -->
+                <input type="hidden" id="recordedAudioData" name="recordedAudio">
+                
+                <button type="submit" id="transcribeButton">Transcribe</button>
+            </form>
+        </div>
+
+        <div class="loading">
+            <div class="loading-spinner"></div>
+            <p id="loadingText">Transcribing your audio...</p>
+            <p id="loadingSubtext" class="loading-subtext">Large models may take a moment to load</p>
+        </div>
+        
+        <div class="card result-card" id="resultCard">
+            <div class="result-header">
+                <h3 class="result-title">Transcription Result</h3>
+                <button class="copy-btn" id="copyButton">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    Copy Text
+                </button>
+            </div>
+            <div class="result-content" id="result"></div>
+            <div id="errorHelp" class="error-help"></div>
+        </div>
+    </div>
+
+    <script>
+        // File input handling
+        document.getElementById('audioFile').addEventListener('change', function(e) {
+            const fileName = e.target.files[0]?.name || 'No file selected';
+            const fileNameElement = document.getElementById('fileName');
+            fileNameElement.textContent = fileName;
+            fileNameElement.style.display = 'block';
+            
+            if (e.target.files[0]) {
+                // Update the label
+                const fileInputLabel = document.querySelector('.file-input-label');
+                fileInputLabel.innerHTML = `
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                        <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>
+                    File selected
+                `;
+                
+                // Create audio preview for uploaded file
+                const audioPlayer = document.getElementById('uploadedAudio');
+                audioPlayer.src = URL.createObjectURL(e.target.files[0]);
+                audioPlayer.style.display = 'block';
+                
+                // Add file-selected class
+                document.getElementById('fileInputContainer').classList.add('file-selected');
+            }
+        });
+        
+        // Tab switching with animation
+        document.querySelectorAll('.tab-btn').forEach((button, index) => {
+            button.addEventListener('click', function() {
+                // Move the slider
+                const slider = document.getElementById('tab-slider');
+                slider.style.left = index === 0 ? '1%' : '51%';
+                
+                // Update active tabs
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Add active class to clicked tab
+                this.classList.add('active');
+                document.getElementById(`${this.dataset.tab}-tab`).classList.add('active');
+            });
+        });
+        
+        // Initialize tab slider on load
+        window.addEventListener('DOMContentLoaded', () => {
+            const slider = document.getElementById('tab-slider');
+            if (slider) {
+                slider.style.left = '1%'; // Position for first tab
+            }
+        });
+        
+        // Audio recording functionality
+        let mediaRecorder;
+        let audioChunks = [];
+        let recordingTimer;
+        let recordingSeconds = 0;
+        let isRecording = false;
+        const recordToggleButton = document.getElementById('recordToggleButton');
+        const recordingStatus = document.getElementById('recordingStatus');
+        const recordingTime = document.getElementById('recordingTime');
+        
+        // Set up audio recording
+        async function setupRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Set up the MediaRecorder
+                mediaRecorder = new MediaRecorder(stream);
+                
+                // Event handlers for MediaRecorder
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    // Create blob and store it
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    
+                    // Convert to base64 for form submission
+                    const reader = new FileReader();
+                    reader.readAsDataURL(audioBlob);
+                    reader.onloadend = () => {
+                        const base64data = reader.result;
+                        document.getElementById('recordedAudioData').value = base64data;
+                    };
+                    
+                    // Add audio preview for recorded audio
+                    const audioPlayer = document.getElementById('recordedAudio');
+                    audioPlayer.src = URL.createObjectURL(audioBlob);
+                    audioPlayer.style.display = 'block';
+                    
+                    recordingStatus.textContent = 'Recording saved and ready to transcribe';
+                    
+                    // Reset UI
+                    clearInterval(recordingTimer);
+                    recordingSeconds = 0;
+                    isRecording = false;
+                    recordToggleButton.textContent = 'Start Recording';
+                    recordToggleButton.classList.remove('stop-btn');
+                    recordToggleButton.classList.add('record-btn');
+                };
+                
+                // Ready to record
+                recordingStatus.textContent = 'Microphone ready. Click Start Recording.';
+            } catch (error) {
+                console.error('Error accessing microphone:', error);
+                recordingStatus.textContent = `Error: ${error.message}. Please ensure microphone access is allowed.`;
+            }
+        }
+        
+        // Initialize recording setup when record tab is clicked
+        document.querySelector('.tab-btn[data-tab="record"]').addEventListener('click', setupRecording);
+        
+        // Record toggle button functionality
+        recordToggleButton.addEventListener('click', () => {
+            if (!isRecording) {
+                // Start recording
+                audioChunks = [];
+                recordingStatus.textContent = 'Recording...';
+                mediaRecorder.start();
+                
+                // Hide previous recording player if exists
+                document.getElementById('recordedAudio').style.display = 'none';
+                
+                // Start timer
+                recordingSeconds = 0;
+                recordingTimer = setInterval(() => {
+                    recordingSeconds++;
+                    const minutes = Math.floor(recordingSeconds / 60).toString().padStart(2, '0');
+                    const seconds = (recordingSeconds % 60).toString().padStart(2, '0');
+                    recordingTime.textContent = `${minutes}:${seconds}`;
+                }, 1000);
+                
+                // Update button
+                if (document.querySelector('.btn-icon.mic-icon')) {
+                    recordToggleButton.innerHTML = '<span class="btn-icon stop-icon"></span> Stop Recording';
+                } else {
+                    recordToggleButton.textContent = ' Stop Recording';
+                    recordToggleButton.prepend(document.createElement('span'));
+                    recordToggleButton.firstChild.className = 'recording-indicator';
+                }
+                recordToggleButton.classList.remove('record-btn');
+                recordToggleButton.classList.add('stop-btn');
+                recordToggleButton.classList.add('recording');
+                isRecording = true;
+            } else {
+                // Stop recording
+                mediaRecorder.stop();
+                recordingStatus.textContent = 'Processing recording...';
+                isRecording = false;
+                
+                // Update button
+                if (document.querySelector('.btn-icon.stop-icon')) {
+                    recordToggleButton.innerHTML = '<span class="btn-icon mic-icon"></span> Start Recording';
+                } else {
+                    recordToggleButton.textContent = 'Start Recording';
+                }
+                recordToggleButton.classList.remove('stop-btn');
+                recordToggleButton.classList.remove('recording');
+                recordToggleButton.classList.add('record-btn');
+            }
+        });
+        
+        // Form submission
+        document.getElementById('transcriptionForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const form = new FormData(e.target);
+            const loading = document.querySelector('.loading');
+            const result = document.getElementById('result');
+            const resultCard = document.getElementById('resultCard');
+            const errorHelp = document.getElementById('errorHelp');
+            
+            // Check which tab is active and ensure we have data
+            const isUploadTab = document.querySelector('.tab-btn[data-tab="upload"]').classList.contains('active');
+            const isRecordTab = document.querySelector('.tab-btn[data-tab="record"]').classList.contains('active');
+            
+            if (isUploadTab && !document.getElementById('audioFile').files[0]) {
+                alert('Please select an audio file to upload');
+                return;
+            }
+            
+            if (isRecordTab && !document.getElementById('recordedAudioData').value) {
+                alert('Please record audio first');
+                return;
+            }
+            
+            loading.style.display = 'flex';
+            document.getElementById('loadingText').textContent = 'Transcribing your audio...';
+            resultCard.style.display = 'none';
+            result.textContent = '';
+            errorHelp.textContent = '';
+            errorHelp.style.display = 'none';
+            
+            try {
+                let response;
+                
+                if (isUploadTab) {
+                    response = await fetch('/transcribe', {
+                        method: 'POST',
+                        body: form
+                    });
+                } else {
+                    // For recorded audio
+                    const base64Data = document.getElementById('recordedAudioData').value;
+                    const blob = await fetch(base64Data).then(r => r.blob());
+                    const audioFile = new File([blob], "recorded_audio.wav", {type: "audio/wav"});
+                    
+                    const recordForm = new FormData();
+                    recordForm.append('audio', audioFile);
+                    recordForm.append('model', form.get('model'));
+                    recordForm.append('language', 'kn');
+                    
+                    response = await fetch('/transcribe', {
+                        method: 'POST',
+                        body: recordForm
+                    });
+                }
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    result.textContent = 'Error: ' + data.error;
+                    
+                    // Add helpful message for service unavailable errors
+                    if (data.error.includes('unavailable') || data.error.includes('503')) {
+                        errorHelp.innerHTML = `
+                            <p>The Hugging Face inference service appears to be unavailable or rate limited.</p>
+                            <p>Suggestions:</p>
+                            <ul>
+                                <li>Try again in a few minutes</li>
+                                <li>Try a different model</li>
+                                <li>Check if the model is currently under heavy load</li>
+                            </ul>
+                        `;
+                        errorHelp.style.display = 'block';
+                    }
+                } else {
+                    result.textContent = data.transcription || data.text;
+                }
+                
+                resultCard.style.display = 'block';
+            } catch (error) {
+                result.textContent = 'Error: ' + error.message;
+                resultCard.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        };
+        
+        // Copy functionality with animation
+        document.getElementById('copyButton').addEventListener('click', function() {
+            const text = document.getElementById('result').textContent;
+            navigator.clipboard.writeText(text).then(function() {
+                const copyBtn = document.getElementById('copyButton');
+                const originalText = copyBtn.innerHTML;
+                
+                copyBtn.innerHTML = `
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                    Copied!
+                `;
+                copyBtn.style.backgroundColor = 'var(--success)';
+                copyBtn.style.color = 'white';
+                copyBtn.style.borderColor = 'var(--success)';
+                
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalText;
+                    copyBtn.style.backgroundColor = '';
+                    copyBtn.style.color = '';
+                    copyBtn.style.borderColor = '';
+                }, 2000);
+            });
+        });
+        
+        // Clean up object URLs when the page is unloaded
+        window.addEventListener('beforeunload', () => {
+            const uploadedAudio = document.getElementById('uploadedAudio');
+            const recordedAudio = document.getElementById('recordedAudio');
+            
+            if (uploadedAudio.src) {
+                URL.revokeObjectURL(uploadedAudio.src);
+            }
+            
+            if (recordedAudio.src) {
+                URL.revokeObjectURL(recordedAudio.src);
+            }
+        });
+    </script>
+</body>
+</html>
