@@ -283,6 +283,48 @@
             }
         });
         
+        // Helper to parse streamed JSON string for "transcription"
+        function parseStreamedTranscription(resultDiv, stream) {
+            let reader = stream.getReader();
+            let decoder = new TextDecoder();
+            let buffer = '';
+            let inString = false;
+            let started = false;
+
+            function pump() {
+                return reader.read().then(({ done, value }) => {
+                    if (done) {
+                        // Remove trailing quote and closing brace if needed
+                        if (buffer.endsWith('"}')) {
+                            buffer = buffer.slice(0, -2);
+                        }
+                        return;
+                    }
+                    let chunk = decoder.decode(value, { stream: true });
+                    for (let i = 0; i < chunk.length; i++) {
+                        let c = chunk[i];
+                        if (!started) {
+                            // Wait for the start of the JSON string value
+                            if (chunk.slice(i, i + 20).startsWith('{"transcription":"')) {
+                                started = true;
+                                i += 18; // Move index to after the opening quote
+                                continue;
+                            }
+                        } else {
+                            // End of JSON string
+                            if (c === '"' && chunk.slice(i, i + 2) === '"}') {
+                                break;
+                            }
+                            buffer += c;
+                            resultDiv.textContent = buffer;
+                        }
+                    }
+                    return pump();
+                });
+            }
+            return pump();
+        }
+
         // Form submission
         document.getElementById('transcriptionForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -338,29 +380,35 @@
                     });
                 }
                 
-                const data = await response.json();
-                
-                if (data.error) {
-                    result.textContent = 'Error: ' + data.error;
-                    
-                    // Add helpful message for service unavailable errors
-                    if (data.error.includes('unavailable') || data.error.includes('503')) {
-                        errorHelp.innerHTML = `
-                            <p>The Hugging Face inference service appears to be unavailable or rate limited.</p>
-                            <p>Suggestions:</p>
-                            <ul>
-                                <li>Try again in a few minutes</li>
-                                <li>Try a different model</li>
-                                <li>Check if the model is currently under heavy load</li>
-                            </ul>
-                        `;
-                        errorHelp.style.display = 'block';
-                    }
+                // Handle streamed response for typing effect
+                if (response.body && response.headers.get('content-type')?.includes('application/json')) {
+                    result.textContent = '';
+                    resultCard.style.display = 'block';
+                    await parseStreamedTranscription(result, response.body);
                 } else {
-                    result.textContent = data.transcription || data.text;
+                    // fallback for error or non-streamed response
+                    const data = await response.json();
+                    if (data.error) {
+                        result.textContent = 'Error: ' + data.error;
+                        
+                        // Add helpful message for service unavailable errors
+                        if (data.error.includes('unavailable') || data.error.includes('503')) {
+                            errorHelp.innerHTML = `
+                                <p>The Hugging Face inference service appears to be unavailable or rate limited.</p>
+                                <p>Suggestions:</p>
+                                <ul>
+                                    <li>Try again in a few minutes</li>
+                                    <li>Try a different model</li>
+                                    <li>Check if the model is currently under heavy load</li>
+                                </ul>
+                            `;
+                            errorHelp.style.display = 'block';
+                        }
+                    } else {
+                        result.textContent = data.transcription || data.text;
+                    }
+                    resultCard.style.display = 'block';
                 }
-                
-                resultCard.style.display = 'block';
             } catch (error) {
                 result.textContent = 'Error: ' + error.message;
                 resultCard.style.display = 'block';

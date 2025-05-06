@@ -1,11 +1,14 @@
 import os
 import requests
 import time
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
 from pydub import AudioSegment
 import tempfile
+# Add import for transliteration
+from aksharamukha import transliterate
+import time as pytime
 
 # Load environment variables
 load_dotenv()
@@ -19,12 +22,17 @@ class ASRInterface:
             "loko99/whisper_tiny_kannada": "Whisper Tiny KN",
             "loko99/whisper_small_kannada": "Whisper Small KN",
             "loko99/whisper_turbo_kannada": "Whisper Turbo KN",
+            "loko99/whisper_small_kannada_translit_IAST": "Whisper Small KN (IAST)",
             "openai/whisper-tiny": "Whisper Tiny",
             "openai/whisper-small": "Whisper Small",
             "openai/whisper-large-v3-turbo": "Whisper Large V3 Turbo",
             "openai/whisper-large-v3": "Whisper Large V3",
         }
         self.headers = {"Authorization": f"Bearer {hf_token}"}
+        # List of models that require transliteration to IAST
+        self.translit_iast_models = [
+            "loko99/whisper_small_kannada_translit_IAST"
+        ]
     
     def call_whisper_api(self, audio_path: str, model_name: str, max_retries: int = 5) -> dict:
         """Make a direct API call with the audio file with retry mechanism"""
@@ -131,6 +139,12 @@ class ASRInterface:
         """Main transcription function that handles any audio length"""
         try:
             transcription = self.process_long_audio(audio_path, model_name)
+            # If the model is in the transliteration list, convert output to IAST
+            if model_name in self.translit_iast_models:
+                # Only transliterate if transcription is not an error message
+                if not transcription.lower().startswith("error"):
+                    # Kannada to IAST
+                    transcription = transliterate.process('Kannada', 'IAST', transcription)
             return transcription
         except Exception as e:
             return f"Error during transcription: {str(e)}"
@@ -153,7 +167,7 @@ def index():
 
 @app.route('/transcribe', methods=['POST'])
 def transcribe():
-    """Handle transcription requests"""
+    """Handle transcription requests with typing effect"""
     try:
         # Check if the required files are provided
         if 'audio' not in request.files:
@@ -179,8 +193,16 @@ def transcribe():
         # Clean up: remove the file after processing
         if os.path.exists(file_path):
             os.remove(file_path)
-        
-        return jsonify({"transcription": transcription})
+
+        # Typing effect generator
+        def generate_typing_effect(text, delay=0.03):
+            yield '{"transcription":"'
+            for c in text.replace('\\', '\\\\').replace('"', '\\"'):
+                yield c
+                pytime.sleep(delay)
+            yield '"}'
+
+        return Response(generate_typing_effect(transcription), mimetype='application/json')
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
