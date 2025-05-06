@@ -139,12 +139,12 @@ class ASRInterface:
         """Main transcription function that handles any audio length"""
         try:
             transcription = self.process_long_audio(audio_path, model_name)
-            # If the model is in the transliteration list, convert output to IAST
+            # If the model is in the transliteration list, convert output from IAST to Kannada
             if model_name in self.translit_iast_models:
                 # Only transliterate if transcription is not an error message
                 if not transcription.lower().startswith("error"):
-                    # Kannada to IAST
-                    transcription = transliterate.process('Kannada', 'IAST', transcription)
+                    # IAST to Kannada
+                    transcription = transliterate.process('IAST', 'Kannada', transcription)
             return transcription
         except Exception as e:
             return f"Error during transcription: {str(e)}"
