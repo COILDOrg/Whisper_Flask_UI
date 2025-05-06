@@ -326,7 +326,7 @@
             return pump();
         }
 
-        // Form submission - update the script section
+        // Form submission - clean up redundant code
         document.getElementById('transcriptionForm').onsubmit = async (e) => {
             e.preventDefault();
             const form = new FormData(e.target);
@@ -423,13 +423,12 @@
             }
         };
         
-        // Modified helper to parse streamed JSON and hide loading when output starts
-        function parseStreamedTranscription(resultDiv, stream, loadingElement, resultContainer) {
+        // Clean up duplicate function - keep only this version
+        function parseStreamedTranscription(resultDiv, stream) {
             let reader = stream.getReader();
             let decoder = new TextDecoder();
             let buffer = '';
             let started = false;
-            let outputStarted = false;
 
             function pump() {
                 return reader.read().then(({ done, value }) => {
@@ -460,13 +459,6 @@
                             
                             buffer += c;
                             resultDiv.textContent = buffer;
-                            
-                            // Hide loading indicator after first output appears
-                            if (!outputStarted && buffer.length > 0) {
-                                outputStarted = true;
-                                loadingElement.style.display = 'none';
-                                resultContainer.classList.remove('loading-active');
-                            }
                         }
                     }
                     return pump();

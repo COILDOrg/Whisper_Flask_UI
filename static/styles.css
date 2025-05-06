@@ -297,12 +297,6 @@ button:active {
     animation: fadeIn 0.3s;
 }
 
-.card.result-card {
-    display: none; /* Initially hide the result card until we have content */
-    opacity: 1;
-    transition: opacity 0.3s;
-}
-
 .loading-spinner {
     display: block;
     width: 60px;
@@ -330,9 +324,22 @@ button:active {
     color: var(--text-secondary);
 }
 
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Result card */
-.result-card {
-    display: none;
+.result-container {
+    position: relative;
+    margin-top: 24px;
+}
+
+.card.result-card {
+    display: none; /* Initially hide the result card until we have content */
+    opacity: 1;
+    transition: opacity 0.3s;
 }
 
 .result-content {
@@ -691,9 +698,4 @@ button:active {
         padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
     }
-}
-
-.result-container {
-    position: relative;
-    margin-top: 24px;
 }
