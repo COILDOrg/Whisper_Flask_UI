@@ -291,25 +291,16 @@ button:active {
     border-radius: 22px;
     box-shadow: var(--shadow);
     border: 1.5px solid var(--primary-light);
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
+    margin-bottom: 20px; /* Add margin to separate from result card */
+    position: relative; /* Change from absolute to relative */
+    z-index: 5;
     animation: fadeIn 0.3s;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 
 .card.result-card {
-    display: block; /* Always keep the card visible */
+    display: none; /* Initially hide the result card until we have content */
     opacity: 1;
     transition: opacity 0.3s;
-}
-
-/* When loading is active, reduce the opacity of result card */
-.loading-active .card.result-card {
-    opacity: 0.3;
 }
 
 .loading-spinner {
@@ -700,4 +691,9 @@ button:active {
         padding-top: env(safe-area-inset-top);
         padding-bottom: env(safe-area-inset-bottom);
     }
+}
+
+.result-container {
+    position: relative;
+    margin-top: 24px;
 }
