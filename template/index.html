@@ -385,34 +385,50 @@
                 }
                 
                 // Handle response
-                if (response.body && response.headers.get('content-type')?.includes('application/json')) {
-                    // Hide loading, show result card when we have a response
-                    loading.style.display = 'none';
-                    resultCard.style.display = 'block';
-                    await parseStreamedTranscription(result, response.body);
-                } else {
-                    const data = await response.json();
-                    if (data.error) {
-                        result.textContent = 'Error: ' + data.error;
+                try {
+                    // Check if we're getting a streaming response
+                    if (response.ok && response.headers.get('content-type')?.includes('application/json') && response.body) {
+                        // Handle streaming response
+                        loading.style.display = 'none';
+                        resultCard.style.display = 'block';
+                        await parseStreamedTranscription(result, response.body);
+                    } else if (response.ok) {
+                        // For non-streaming responses, use json()
+                        const data = await response.json().catch(e => {
+                            console.error("Error parsing JSON response:", e);
+                            return { error: "Failed to parse server response" };
+                        });
                         
-                        // Add helpful message for service unavailable errors
-                        if (data.error.includes('unavailable') || data.error.includes('503')) {
-                            errorHelp.innerHTML = `
-                                <p>The Hugging Face inference service appears to be unavailable or rate limited.</p>
-                                <p>Suggestions:</p>
-                                <ul>
-                                    <li>Try again in a few minutes</li>
-                                    <li>Try a different model</li>
-                                    <li>Check if the model is currently under heavy load</li>
-                                </ul>
-                            `;
-                            errorHelp.style.display = 'block';
+                        if (data.error) {
+                            result.textContent = 'Error: ' + data.error;
+                            
+                            // Add helpful message for service unavailable errors
+                            if (data.error.includes('unavailable') || data.error.includes('503')) {
+                                errorHelp.innerHTML = `
+                                    <p>The Hugging Face inference service appears to be unavailable or rate limited.</p>
+                                    <p>Suggestions:</p>
+                                    <ul>
+                                        <li>Try again in a few minutes</li>
+                                        <li>Try a different model</li>
+                                        <li>Check if the model is currently under heavy load</li>
+                                    </ul>
+                                `;
+                                errorHelp.style.display = 'block';
+                            }
+                        } else {
+                            result.textContent = data.transcription || data.text || "No transcription data received";
                         }
+                        
+                        // Hide loading and show result
+                        loading.style.display = 'none';
+                        resultCard.style.display = 'block';
                     } else {
-                        result.textContent = data.transcription || data.text;
+                        // Handle non-OK responses
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                     }
-                    
-                    // Hide loading and show result when done
+                } catch (error) {
+                    console.error("Response processing error:", error);
+                    result.textContent = 'Error: ' + error.message;
                     loading.style.display = 'none';
                     resultCard.style.display = 'block';
                 }
