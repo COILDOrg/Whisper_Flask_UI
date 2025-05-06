@@ -284,17 +284,32 @@ button:active {
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 40px 0 30px 0;
-    min-height: 180px;
+    padding: 30px 0;
+    width: 100%;
+    min-height: 200px;
     background: var(--card-bg);
-    border-radius: 20px;
+    border-radius: 22px;
     box-shadow: var(--shadow);
-    margin-top: 24px;
-    margin-bottom: 24px;
     border: 1.5px solid var(--primary-light);
-    position: relative;
-    z-index: 10;
-    animation: fadeIn 0.4s;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    animation: fadeIn 0.3s;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.card.result-card {
+    display: block; /* Always keep the card visible */
+    opacity: 1;
+    transition: opacity 0.3s;
+}
+
+/* When loading is active, reduce the opacity of result card */
+.loading-active .card.result-card {
+    opacity: 0.3;
 }
 
 .loading-spinner {

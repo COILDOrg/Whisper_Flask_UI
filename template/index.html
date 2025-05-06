@@ -91,25 +91,28 @@
             </form>
         </div>
 
-        <div class="loading" id="loadingSection">
-            <div class="loading-spinner"></div>
-            <p id="loadingText">Transcribing your audio...</p>
-            <p id="loadingSubtext" class="loading-subtext">Large models may take a moment to load</p>
-        </div>
-        
-        <div class="card result-card" id="resultCard">
-            <div class="result-header">
-                <h3 class="result-title">Transcription Result</h3>
-                <button class="copy-btn" id="copyButton" aria-label="Copy transcription">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                    </svg>
-                    Copy Text
-                </button>
+        <!-- Wrap the result section in a container and move loading inside -->
+        <div class="result-container" id="resultContainer">
+            <div class="loading" id="loadingSection">
+                <div class="loading-spinner"></div>
+                <p id="loadingText">Transcribing your audio...</p>
+                <p id="loadingSubtext" class="loading-subtext">Large models may take a moment to load</p>
             </div>
-            <div class="result-content" id="result"></div>
-            <div id="errorHelp" class="error-help"></div>
+            
+            <div class="card result-card" id="resultCard">
+                <div class="result-header">
+                    <h3 class="result-title">Transcription Result</h3>
+                    <button class="copy-btn" id="copyButton" aria-label="Copy transcription">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                        Copy Text
+                    </button>
+                </div>
+                <div class="result-content" id="result"></div>
+                <div id="errorHelp" class="error-help"></div>
+            </div>
         </div>
     </div>
 
@@ -325,13 +328,14 @@
             return pump();
         }
 
-        // Form submission
+        // Form submission - update the script section
         document.getElementById('transcriptionForm').onsubmit = async (e) => {
             e.preventDefault();
             const form = new FormData(e.target);
-            const loading = document.querySelector('.loading');
+            const loading = document.getElementById('loadingSection');
             const result = document.getElementById('result');
             const resultCard = document.getElementById('resultCard');
+            const resultContainer = document.getElementById('resultContainer');
             const errorHelp = document.getElementById('errorHelp');
             
             // Check which tab is active and ensure we have data
@@ -348,9 +352,12 @@
                 return;
             }
             
+            // Show loading overlay and add the loading-active class to the container
             loading.style.display = 'flex';
+            resultContainer.classList.add('loading-active');
             document.getElementById('loadingText').textContent = 'Transcribing your audio...';
-            resultCard.style.display = 'none';
+            
+            // Clear previous results but keep the card visible
             result.textContent = '';
             errorHelp.textContent = '';
             errorHelp.style.display = 'none';
@@ -380,13 +387,11 @@
                     });
                 }
                 
-                // Handle streamed response for typing effect
+                // Modified handling of streamed response to hide loading once output starts
                 if (response.body && response.headers.get('content-type')?.includes('application/json')) {
-                    result.textContent = '';
-                    resultCard.style.display = 'block';
-                    await parseStreamedTranscription(result, response.body);
+                    await parseStreamedTranscription(result, response.body, loading, resultContainer);
                 } else {
-                    // fallback for error or non-streamed response
+                    // Fallback for error or non-streamed response
                     const data = await response.json();
                     if (data.error) {
                         result.textContent = 'Error: ' + data.error;
@@ -407,15 +412,70 @@
                     } else {
                         result.textContent = data.transcription || data.text;
                     }
-                    resultCard.style.display = 'block';
+                    
+                    // Hide loading when done
+                    loading.style.display = 'none';
+                    resultContainer.classList.remove('loading-active');
                 }
             } catch (error) {
                 result.textContent = 'Error: ' + error.message;
-                resultCard.style.display = 'block';
-            } finally {
                 loading.style.display = 'none';
+                resultContainer.classList.remove('loading-active');
             }
         };
+        
+        // Modified helper to parse streamed JSON and hide loading when output starts
+        function parseStreamedTranscription(resultDiv, stream, loadingElement, resultContainer) {
+            let reader = stream.getReader();
+            let decoder = new TextDecoder();
+            let buffer = '';
+            let started = false;
+            let outputStarted = false;
+
+            function pump() {
+                return reader.read().then(({ done, value }) => {
+                    if (done) {
+                        // Remove trailing quote and closing brace if needed
+                        if (buffer.endsWith('"}')) {
+                            buffer = buffer.slice(0, -2);
+                        }
+                        return;
+                    }
+                    
+                    let chunk = decoder.decode(value, { stream: true });
+                    for (let i = 0; i < chunk.length; i++) {
+                        let c = chunk[i];
+                        
+                        if (!started) {
+                            // Wait for the start of the JSON string value
+                            if (chunk.slice(i, i + 20).startsWith('{"transcription":"')) {
+                                started = true;
+                                i += 18; // Move index to after the opening quote
+                                continue;
+                            }
+                        } else {
+                            // End of JSON string
+                            if (c === '"' && chunk.slice(i, i + 2) === '"}') {
+                                break;
+                            }
+                            
+                            buffer += c;
+                            resultDiv.textContent = buffer;
+                            
+                            // Hide loading indicator after first output appears
+                            if (!outputStarted && buffer.length > 0) {
+                                outputStarted = true;
+                                loadingElement.style.display = 'none';
+                                resultContainer.classList.remove('loading-active');
+                            }
+                        }
+                    }
+                    return pump();
+                });
+            }
+            
+            return pump();
+        }
         
         // Copy functionality with animation
         document.getElementById('copyButton').addEventListener('click', function() {
